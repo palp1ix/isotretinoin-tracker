@@ -1,8 +1,8 @@
 // Меняйте суффикс CACHE_VERSION при каждом релизе, чтобы обновить офлайн-оболочку.
-const CACHE_VERSION = 'isotretinoin-v1';
+const CACHE_VERSION = 'isotretinoin-v2';
 const APP_SHELL = [
   './', './index.html', './style.css', './app.js', './storage.js',
-  './calculations.js', './ui.js', './manifest.webmanifest', './icons/icon.svg',
+  './calculations.js', './ui.js', './attachments.js', './manifest.webmanifest', './icons/icon.svg',
   './icons/icon-192.png', './icons/icon-512.png',
   './icons/icon-maskable-192.png', './icons/icon-maskable-512.png'
 ];

@@ -134,6 +134,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .lab-type { display: inline-block; border-radius: 9px; background: var(--surface-soft); color: var(--muted); padding: 5px 8px; font-size: 10px; }
 .lab-card h3 { margin: 9px 0; font-size: 15px; text-transform: capitalize; }
 .lab-card p { margin: 5px 0; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pdf-link { min-height: 40px; margin-top: 9px; padding: 0 12px; font-size: 12px; text-align: left; overflow-wrap: anywhere; }
 .empty-inline { margin-top: 17px; display: flex; align-items: center; gap: 14px; padding: 18px; }
 .empty-inline > span { font-size: 25px; }
 .empty-inline strong { font-size: 14px; }

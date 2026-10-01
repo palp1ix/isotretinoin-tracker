@@ -1,6 +1,7 @@
 import { loadData, saveData, parseImport, createDefaultData } from './storage.js';
 import { totalDose, dosesOnDate, milestoneCrossed, alternatingSuggestion, runCalculationTests } from './calculations.js';
 import { renderApp, doseSheet, labSheet, animateProgress, showMilestone } from './ui.js';
+import { savePdf, getPdf, deletePdf, clearPdfs, pdfToBase64, pdfFromBase64 } from './attachments.js';
 
 let data = loadData();
 let activeTab = 'today';
@@ -46,6 +47,24 @@ function openLab() {
   overlay.innerHTML = labSheet();
   document.body.classList.add('sheet-open');
   requestAnimationFrame(() => overlay.querySelector('.bottom-sheet')?.classList.add('visible'));
+}
+
+async function openLabPdf(fileId) {
+  const preview = window.open('about:blank', '_blank');
+  if (!preview) {
+    toast('Разрешите открытие PDF во всплывающем окне и повторите.');
+    return;
+  }
+  try {
+    const savedFile = await getPdf(fileId);
+    if (!savedFile?.blob) throw new Error('Файл не найден в хранилище этого устройства.');
+    const url = URL.createObjectURL(savedFile.blob);
+    preview.location.href = url;
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (error) {
+    preview.close();
+    toast(error.message || 'Не удалось открыть PDF.');
+  }
 }
 
 function closeSheet() {
@@ -110,12 +129,31 @@ function saveDose(form) {
   }
 }
 
-function saveLab(form) {
+async function saveLab(form) {
   if (!form.reportValidity()) return;
   const date = form.elements.namedItem('date').value;
   if (!date) return;
+  const file = form.elements.namedItem('pdf').files?.[0];
+  if (file && (!file.name.toLowerCase().endsWith('.pdf') || (file.type && file.type !== 'application/pdf'))) {
+    toast('Можно прикрепить только PDF-файл.');
+    return;
+  }
+  if (file && file.size > 25 * 1024 * 1024) {
+    toast('PDF должен быть не больше 25 МБ.');
+    return;
+  }
   const timestamp = new Date(`${date}T12:00:00`).toISOString();
-  data.labs.push({ id: id(), timestamp, type: form.elements.namedItem('type').value, values: form.elements.namedItem('values').value.trim(), note: form.elements.namedItem('note').value.trim() });
+  const entry = { id: id(), timestamp, type: form.elements.namedItem('type').value, values: form.elements.namedItem('values').value.trim(), note: form.elements.namedItem('note').value.trim() };
+  if (file) {
+    entry.attachment = { id: id(), name: file.name, size: file.size, type: 'application/pdf' };
+    try {
+      await savePdf(entry.attachment.id, file, file.name);
+    } catch (error) {
+      toast(error.message || 'Не удалось сохранить PDF на устройстве.');
+      return;
+    }
+  }
+  data.labs.push(entry);
   data.labs.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   persist('Анализ сохранён');
   closeSheet();
@@ -145,7 +183,19 @@ function saveSettings(form) {
 }
 
 async function exportData() {
-  const exported = { ...data, lastBackupAt: new Date().toISOString() };
+  let labsWithPdf;
+  try {
+    labsWithPdf = await Promise.all(data.labs.map(async (lab) => {
+      if (!lab.attachment) return lab;
+      const savedFile = await getPdf(lab.attachment.id);
+      if (!savedFile?.blob) throw new Error(`PDF «${lab.attachment.name}» не найден в локальном хранилище.`);
+      return { ...lab, attachment: { ...lab.attachment, base64: await pdfToBase64(savedFile.blob) } };
+    }));
+  } catch (error) {
+    toast(error.message || 'Не удалось подготовить PDF к резервному копированию.');
+    return;
+  }
+  const exported = { ...data, labs: labsWithPdf, lastBackupAt: new Date().toISOString() };
   data.lastBackupAt = exported.lastBackupAt;
   persist();
   const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' });
@@ -177,11 +227,37 @@ function importFile() {
 async function handleImport(input) {
   const file = input.files?.[0];
   if (!file) return;
+  if (file.size > 40 * 1024 * 1024) {
+    window.alert('Файл резервной копии больше 40 МБ.');
+    return;
+  }
   try {
     const imported = parseImport(await file.text());
     if (!window.confirm(`В файле ${imported.doses.length} приёмов и ${imported.labs.length} анализов. Заменить текущие данные?`)) return;
+    const newlyStoredIds = [];
+    try {
+      for (const lab of imported.labs) {
+        if (!lab.attachment) continue;
+        if (typeof lab.attachment.base64 !== 'string') {
+          delete lab.attachment;
+          continue;
+        }
+        const pdfBlob = pdfFromBase64(lab.attachment.base64);
+        if (pdfBlob.size > 25 * 1024 * 1024) throw new Error(`PDF «${lab.attachment.name}» превышает ограничение 25 МБ.`);
+        const attachmentId = id();
+        await savePdf(attachmentId, pdfBlob, lab.attachment.name);
+        newlyStoredIds.push(attachmentId);
+        lab.attachment = { ...lab.attachment, id: attachmentId, size: pdfBlob.size, type: 'application/pdf' };
+        delete lab.attachment.base64;
+      }
+    } catch (error) {
+      await Promise.all(newlyStoredIds.map((attachmentId) => deletePdf(attachmentId).catch(() => {})));
+      throw error;
+    }
+    const oldAttachmentIds = data.labs.map((lab) => lab.attachment?.id).filter(Boolean);
     data = imported;
     persist('Данные импортированы');
+    await Promise.all(oldAttachmentIds.map((attachmentId) => deletePdf(attachmentId).catch(() => {})));
     refresh();
   } catch (error) {
     console.error(error);
@@ -193,6 +269,7 @@ function clearAll() {
   if (!window.confirm('Удалить все записи, анализы и настройки? Это действие нельзя отменить.')) return;
   if (!window.confirm('Последнее подтверждение: данные будут удалены без возможности восстановления. Продолжить?')) return;
   data = createDefaultData();
+  clearPdfs().catch((error) => console.warn('Не удалось удалить PDF-вложения:', error));
   persist('Все данные удалены');
   activeTab = 'today';
   refresh();
@@ -231,10 +308,13 @@ document.addEventListener('click', (event) => {
   else if (action === 'close-sheet' && (actionNode === event.target || actionNode.tagName === 'BUTTON')) closeSheet();
   else if (action === 'delete-lab') {
     if (window.confirm('Удалить эту запись анализа?')) {
-      data.labs = data.labs.filter((lab) => lab.id !== actionNode.dataset.id);
+      const lab = data.labs.find((item) => item.id === actionNode.dataset.id);
+      if (lab?.attachment) deletePdf(lab.attachment.id).catch((error) => console.warn('Не удалось удалить PDF-вложение:', error));
+      data.labs = data.labs.filter((item) => item.id !== actionNode.dataset.id);
       persist('Запись удалена'); refresh();
     }
-  } else if (action === 'export') exportData();
+  } else if (action === 'open-lab-pdf') openLabPdf(actionNode.dataset.fileId);
+  else if (action === 'export') exportData();
   else if (action === 'import') importFile();
   else if (action === 'clear-data') clearAll();
   else if (action === 'delete-dose') {

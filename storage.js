@@ -42,11 +42,21 @@ function sanitizeData(value) {
     doseMg: positiveOrDefault(item.doseMg, 0), fatGrams: positiveOrDefault(item.fatGrams, 0),
     note: String(item.note || '').slice(0, 500)
   })).filter((item) => item.timestamp) : [];
-  const labs = Array.isArray(value.labs) ? value.labs.filter((item) => item && typeof item === 'object').map((item) => ({
-    id: String(item.id || makeId()), timestamp: validTimestamp(item.timestamp),
-    type: ['Липиды', 'АЛТ/АСТ', 'Другое'].includes(item.type) ? item.type : 'Другое',
-    values: String(item.values || '').slice(0, 1000), note: String(item.note || '').slice(0, 500)
-  })).filter((item) => item.timestamp) : [];
+  const labs = Array.isArray(value.labs) ? value.labs.filter((item) => item && typeof item === 'object').map((item) => {
+    const attachment = item.attachment && typeof item.attachment === 'object' ? {
+      id: String(item.attachment.id || makeId()),
+      name: String(item.attachment.name || 'analiz.pdf').slice(0, 200),
+      size: positiveOrDefault(item.attachment.size, 0),
+      type: 'application/pdf',
+      ...(typeof item.attachment.base64 === 'string' ? { base64: item.attachment.base64 } : {})
+    } : null;
+    return {
+      id: String(item.id || makeId()), timestamp: validTimestamp(item.timestamp),
+      type: ['Липиды', 'АЛТ/АСТ', 'Другое'].includes(item.type) ? item.type : 'Другое',
+      values: String(item.values || '').slice(0, 1000), note: String(item.note || '').slice(0, 500),
+      ...(attachment ? { attachment } : {})
+    };
+  }).filter((item) => item.timestamp) : [];
   return { version: 1, settings, doses, labs, lastBackupAt: validTimestamp(value.lastBackupAt) || null };
 }
 
