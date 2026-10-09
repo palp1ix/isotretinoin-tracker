@@ -162,7 +162,7 @@ export function labSheet() {
 }
 
 export function animateProgress() {
-  requestAnimationFrame(() => document.querySelectorAll('.ring-value').forEach((ring) => { ring.style.strokeDashoffset = ring.dataset.offset; }));
+  requestAnimationFrame(() => document.querySelectorAll('.ring-value, .ring-supply').forEach((ring) => { ring.style.strokeDashoffset = ring.dataset.offset; }));
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   document.querySelectorAll('.count-up').forEach((node) => {
     const target = Number(node.dataset.value);
