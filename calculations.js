@@ -49,27 +49,36 @@ export function supplyStockMg(supply) {
   return Math.max(0, safeNonNegative(supply.packs) * Math.max(1, safeNonNegative(supply.packSize)) * safeNonNegative(supply.tabletMg));
 }
 
-export function averageDailyDoseConsumed(doses, days = 14, now = new Date()) {
-  const average = averageDailyDose(doses, days, now);
-  if (average > 0) return average;
-  const latest = [...doses].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))[0];
-  return latest ? safeNonNegative(latest.doseMg) : 0;
+export function courseDailyAverage(doses, settings = {}, now = new Date()) {
+  const start = settings.startDate ? new Date(`${settings.startDate}T12:00:00`) : null;
+  const earliestDose = [...doses].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))[0];
+  const effectiveStart = start && !Number.isNaN(start.getTime())
+    ? start
+    : (earliestDose ? new Date(Date.parse(earliestDose.timestamp)) : null);
+  if (!effectiveStart) return 0;
+  const days = Math.max(1, Math.ceil((now.getTime() - effectiveStart.getTime()) / DAY_MS));
+  return totalDose(doses) / days;
 }
 
-export function supplyForecast(doses, supply, now = new Date(), days = 14) {
+export function supplyForecast(doses, supply, settings = {}, now = new Date()) {
   const packMg = Math.max(1, safeNonNegative(supply?.packSize) * safeNonNegative(supply?.tabletMg));
   const stockMg = supplyStockMg(supply);
   const consumedMg = totalDose(doses);
   const leftMg = Math.max(0, stockMg - consumedMg);
-  const daily = averageDailyDoseConsumed(doses, days, now);
+  const targetMg = safeNonNegative(settings.targetMg);
+  // Кольцо: доля оставшегося курса, покрытая имеющимися таблетками.
+  const courseRemaining = Math.max(0, targetMg - consumedMg);
+  const coverageRatio = courseRemaining > 0 ? Math.min(1, leftMg / courseRemaining) : 0;
+  const daily = courseDailyAverage(doses, settings, now);
   const packsLeft = leftMg / packMg;
-  if (daily <= 0) return { stockMg, consumedMg, leftMg, daysLeft: null, runOutDate: null, packsLeft, packsToBuy: 0, daily };
+  if (daily <= 0) return { stockMg, consumedMg, leftMg, coverageRatio, daysLeft: null, runOutDate: null, packsLeft, packsToBuy: 0, daily };
   const daysLeft = Math.floor(leftMg / daily);
   const runOutDate = new Date(now);
   runOutDate.setDate(runOutDate.getDate() + daysLeft);
-  const need30 = daily * 30 - leftMg;
-  const packsToBuy = need30 > 0 ? Math.ceil(need30 / packMg) : 0;
-  return { stockMg, consumedMg, leftMg, daysLeft, runOutDate, packsLeft, packsToBuy, daily };
+  // Докупать так, чтобы таблеток хватило до конца курса.
+  const needForCourse = targetMg > 0 ? targetMg - consumedMg - leftMg : 0;
+  const packsToBuy = needForCourse > 0 ? Math.ceil(needForCourse / packMg) : 0;
+  return { stockMg, consumedMg, leftMg, coverageRatio, daysLeft, runOutDate, packsLeft, packsToBuy, daily };
 }
 
 export function milestoneCrossed(previousMg, currentMg, targetMg) {
@@ -96,8 +105,9 @@ export function runCalculationTests() {
   console.assert(milestoneCrossed(0, 20, 1000) === null, 'milestoneCrossed should ignore unpassed milestone');
   console.assert(totalDose([{ doseMg: -5 }, { doseMg: 'nope' }]) === 0, 'invalid dose should not affect total');
   console.assert(supplyStockMg({ packs: 2, packSize: 30, tabletMg: 10 }) === 600, 'supplyStockMg should multiply packs');
-  const forecast = supplyForecast(doses, { packs: 2, packSize: 30, tabletMg: 10 }, new Date('2025-01-10T12:00:00.000Z'));
+  const forecast = supplyForecast(doses, { packs: 2, packSize: 30, tabletMg: 10 }, { targetMg: 1000, startDate: '2025-01-01' }, new Date('2025-01-10T12:00:00.000Z'));
   console.assert(forecast.leftMg === 550, 'supplyForecast should subtract consumed dose');
-  console.assert(forecast.daysLeft === Math.floor(550 / (50 / 14)), 'supplyForecast should compute days left');
-  console.assert(supplyForecast([], { packs: 1, packSize: 30, tabletMg: 10 }).daysLeft === null, 'no consumption data -> null daysLeft');
+  console.assert(forecast.daysLeft === Math.floor(550 / 5), 'supplyForecast should use course-wide daily average');
+  console.assert(Math.abs(forecast.coverageRatio - 550 / 950) < 1e-9, 'coverageRatio should be share of remaining course');
+  console.assert(supplyForecast([], { packs: 1, packSize: 30, tabletMg: 10 }, { targetMg: 1000, startDate: '2025-01-01' }, new Date('2025-01-10T12:00:00.000Z')).daysLeft === null, 'no doses -> null daysLeft');
 }
