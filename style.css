@@ -205,3 +205,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+.ring-supply { fill: none; stroke: #7fc8a9; stroke-width: 5; stroke-linecap: round; opacity: .55; transition: stroke-dashoffset .95s cubic-bezier(.22,1,.36,1); }
+.supply-card { display: grid; gap: 8px; margin: 14px 0; }
+.supply-head { display: flex; align-items: center; gap: 12px; }
+.supply-head .stat-icon { font-size: 24px; }
+.supply-head .stat-label { display: block; color: var(--muted); font-size: 12px; }
+.supply-empty { display: flex; gap: 12px; align-items: flex-start; }
+.supply-buy { background: var(--surface-soft); border-radius: 12px; padding: 10px 12px; font-size: 14px; }

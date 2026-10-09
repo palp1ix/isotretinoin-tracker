@@ -14,6 +14,7 @@ export function createDefaultData() {
       alternating: false,
       labReminderWeeks: 12
     },
+    supply: { packs: 0, packSize: 30, tabletMg: 10 },
     doses: [],
     labs: [],
     lastBackupAt: null
@@ -37,6 +38,12 @@ function sanitizeData(value) {
   settings.targetMode = settings.targetMode === 'weight' ? 'weight' : 'manual';
   settings.alternating = Boolean(settings.alternating);
   settings.units = settings.units === 'lb' ? 'lb' : 'kg';
+  const supplySource = value.supply && typeof value.supply === 'object' ? value.supply : {};
+  const supply = {
+    packs: positiveOrDefault(supplySource.packs, 0),
+    packSize: Math.max(1, positiveOrDefault(supplySource.packSize, defaults.supply.packSize)),
+    tabletMg: positiveOrDefault(supplySource.tabletMg, defaults.supply.tabletMg)
+  };
   const doses = Array.isArray(value.doses) ? value.doses.filter((item) => item && typeof item === 'object').map((item) => ({
     id: String(item.id || makeId()), timestamp: validTimestamp(item.timestamp),
     doseMg: positiveOrDefault(item.doseMg, 0), fatGrams: positiveOrDefault(item.fatGrams, 0),
@@ -57,7 +64,7 @@ function sanitizeData(value) {
       ...(attachment ? { attachment } : {})
     };
   }).filter((item) => item.timestamp) : [];
-  return { version: 1, settings, doses, labs, lastBackupAt: validTimestamp(value.lastBackupAt) || null };
+  return { version: 1, settings, supply, doses, labs, lastBackupAt: validTimestamp(value.lastBackupAt) || null };
 }
 
 function validTimestamp(value) {

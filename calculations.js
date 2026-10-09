@@ -44,6 +44,34 @@ export function progressPercent(doses, targetMg) {
   return Math.min(100, (totalDose(doses) / safeNonNegative(targetMg)) * 100);
 }
 
+export function supplyStockMg(supply) {
+  if (!supply) return 0;
+  return Math.max(0, safeNonNegative(supply.packs) * Math.max(1, safeNonNegative(supply.packSize)) * safeNonNegative(supply.tabletMg));
+}
+
+export function averageDailyDoseConsumed(doses, days = 14, now = new Date()) {
+  const average = averageDailyDose(doses, days, now);
+  if (average > 0) return average;
+  const latest = [...doses].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))[0];
+  return latest ? safeNonNegative(latest.doseMg) : 0;
+}
+
+export function supplyForecast(doses, supply, now = new Date(), days = 14) {
+  const packMg = Math.max(1, safeNonNegative(supply?.packSize) * safeNonNegative(supply?.tabletMg));
+  const stockMg = supplyStockMg(supply);
+  const consumedMg = totalDose(doses);
+  const leftMg = Math.max(0, stockMg - consumedMg);
+  const daily = averageDailyDoseConsumed(doses, days, now);
+  const packsLeft = leftMg / packMg;
+  if (daily <= 0) return { stockMg, consumedMg, leftMg, daysLeft: null, runOutDate: null, packsLeft, packsToBuy: 0, daily };
+  const daysLeft = Math.floor(leftMg / daily);
+  const runOutDate = new Date(now);
+  runOutDate.setDate(runOutDate.getDate() + daysLeft);
+  const need30 = daily * 30 - leftMg;
+  const packsToBuy = need30 > 0 ? Math.ceil(need30 / packMg) : 0;
+  return { stockMg, consumedMg, leftMg, daysLeft, runOutDate, packsLeft, packsToBuy, daily };
+}
+
 export function milestoneCrossed(previousMg, currentMg, targetMg) {
   if (targetMg <= 0) return null;
   const marks = [25, 50, 75, 100];
@@ -67,4 +95,9 @@ export function runCalculationTests() {
   console.assert(milestoneCrossed(240, 260, 1000) === 25, 'milestoneCrossed should detect milestone');
   console.assert(milestoneCrossed(0, 20, 1000) === null, 'milestoneCrossed should ignore unpassed milestone');
   console.assert(totalDose([{ doseMg: -5 }, { doseMg: 'nope' }]) === 0, 'invalid dose should not affect total');
+  console.assert(supplyStockMg({ packs: 2, packSize: 30, tabletMg: 10 }) === 600, 'supplyStockMg should multiply packs');
+  const forecast = supplyForecast(doses, { packs: 2, packSize: 30, tabletMg: 10 }, new Date('2025-01-10T12:00:00.000Z'));
+  console.assert(forecast.leftMg === 550, 'supplyForecast should subtract consumed dose');
+  console.assert(forecast.daysLeft === Math.floor(550 / (50 / 14)), 'supplyForecast should compute days left');
+  console.assert(supplyForecast([], { packs: 1, packSize: 30, tabletMg: 10 }).daysLeft === null, 'no consumption data -> null daysLeft');
 }

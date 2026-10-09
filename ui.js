@@ -1,4 +1,4 @@
-import { totalDose, averageDailyDose, projectedEndDate, progressPercent, dosesOnDate, doseDate, alternatingSuggestion } from './calculations.js';
+import { totalDose, averageDailyDose, projectedEndDate, progressPercent, dosesOnDate, doseDate, alternatingSuggestion, supplyForecast, supplyStockMg } from './calculations.js';
 
 const esc = (value = '') => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const fmt = (value, digits = 0) => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: digits }).format(value);
@@ -29,6 +29,10 @@ function renderToday(data) {
   const projected = projectedEndDate(doses, target);
   const circumference = 2 * Math.PI * 88;
   const offset = circumference * (1 - percent / 100);
+  const supply = supplyForecast(doses, data.supply);
+  const supplyCircumference = 2 * Math.PI * 76;
+  const supplyLeftRatio = supply.stockMg > 0 ? Math.min(1, supply.leftMg / supply.stockMg) : 0;
+  const supplyOffset = supplyCircumference * (1 - supplyLeftRatio);
   const todayDoses = dosesOnDate(doses);
   const suggestion = settings.alternating ? alternatingSuggestion(doses) : null;
   const installTip = isInstalled() ? '' : `<aside class="install-tip"><span>📲</span><span><strong>Добавьте приложение на экран «Домой»</strong><br>Нажмите «Поделиться» → «На экран Домой».</span><button class="icon-button tip-close" data-action="dismiss-install" aria-label="Скрыть подсказку">×</button></aside>`;
@@ -36,14 +40,29 @@ function renderToday(data) {
     <div class="page-heading"><div><p class="eyebrow">ТВОЙ СПОКОЙНЫЙ РИТМ</p><h1>Сегодня</h1><p class="muted">${dateLabel(new Date(), { weekday: 'long', day: 'numeric', month: 'long' })}</p></div><span class="heading-emoji">💊</span></div>
     <article class="progress-card card">
       <div class="progress-copy"><span class="eyebrow">НАКОПЛЕННАЯ ДОЗА</span><div class="big-number count-up" data-value="${total}" data-decimals="0">${fmt(total)}</div><div class="muted">из ${fmt(target)} мг · <strong>${fmt(percent, 1)}%</strong></div></div>
-      <div class="ring-wrap"><svg class="progress-ring" viewBox="0 0 200 200" role="img" aria-label="Прогресс курса ${fmt(percent, 1)} процентов"><defs><linearGradient id="progress-gradient" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f3b69f"/><stop offset="1" stop-color="#bca7e8"/></linearGradient></defs><circle class="ring-track" cx="100" cy="100" r="88"/><circle class="ring-value" cx="100" cy="100" r="88" stroke-dasharray="${circumference}" stroke-dashoffset="${circumference}" data-offset="${offset}"/><text x="100" y="98" class="ring-percent" text-anchor="middle">${fmt(percent, 0)}%</text><text x="100" y="120" class="ring-label" text-anchor="middle">цель</text></svg></div>
+      <div class="ring-wrap"><svg class="progress-ring" viewBox="0 0 200 200" role="img" aria-label="Прогресс курса ${fmt(percent, 1)} процентов${supply.stockMg > 0 ? `, запас таблеток ${fmt(supplyLeftRatio * 100, 0)} процентов` : ``}"><defs><linearGradient id="progress-gradient" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f3b69f"/><stop offset="1" stop-color="#bca7e8"/></linearGradient></defs><circle class="ring-track" cx="100" cy="100" r="88"/><circle class="ring-value" cx="100" cy="100" r="88" stroke-dasharray="${circumference}" stroke-dashoffset="${circumference}" data-offset="${offset}"/>${supply.stockMg > 0 ? `<circle class="ring-supply" cx="100" cy="100" r="76" stroke-dasharray="${supplyCircumference}" stroke-dashoffset="${supplyCircumference}" data-offset="${supplyOffset}"/>` : ''}<text x="100" y="98" class="ring-percent" text-anchor="middle">${fmt(percent, 0)}%</text><text x="100" y="120" class="ring-label" text-anchor="middle">цель</text></svg></div>
       <div class="progress-foot"><span>🎯 Осталось <strong class="count-up" data-value="${remaining}">${fmt(remaining)}</strong> мг</span><span>🌱 ${percent >= 100 ? 'Курс достиг цели' : 'Шаг за шагом'}</span></div>
     </article>
     <div class="stat-grid"><article class="stat-card"><span class="stat-icon">📊</span><span class="stat-label">Среднее за 14 дней</span><strong>${fmt(average, 1)} <small>мг/день</small></strong></article><article class="stat-card"><span class="stat-icon">🗓️</span><span class="stat-label">Прогноз завершения</span><strong class="stat-date">${projected ? dateLabel(projected, { day: 'numeric', month: 'short', year: 'numeric' }) : 'нужны записи'}</strong></article></div>
+    ${supplyCard(supply, data)}
     ${settings.alternating ? `<div class="suggestion-banner">🔁 По схеме чередования сегодня можно ${suggestion} мг <span class="muted">— ориентир, не медицинское назначение</span></div>` : ''}
     <button class="primary-button log-button" data-action="open-dose">＋ Записать приём</button>
     <div class="today-note">${todayDoses.length ? `Сегодня записано приёмов: <strong>${todayDoses.length}</strong>` : 'Небольшая запись сегодня — полезная опора для истории.'}</div>
     <div class="backup-nudge">${backupMessage(data.lastBackupAt)}</div>`;
+}
+
+function supplyCard(supply, data) {
+  if (!data.supply || supplyStockMg(data.supply) <= 0) {
+    return `<article class="supply-card card supply-empty"><span class="stat-icon">📦</span><div><strong>Укажите запас таблеток</strong><p class="muted">Сколько пачек сейчас куплено — приложение покажет, на сколько дней их хватит и когда покупать новые. Настраивается в разделе «Настройки».</p></div></article>`;
+  }
+  const packsTotal = supply.stockMg / Math.max(1, data.supply.packSize * data.supply.tabletMg);
+  const leftPacks = fmt(supply.packsLeft, 1);
+  const when = supply.runOutDate ? dateLabel(supply.runOutDate, { day: 'numeric', month: 'long' }) : null;
+  const status = supply.daysLeft === null
+    ? 'Нужны записи приёмов для прогноза'
+    : supply.leftMg <= 0 ? 'Таблетки закончились — купите новые' : `Хватит примерно на <strong>${fmt(supply.daysLeft)}</strong> ${plural(supply.daysLeft, ['день', 'дня', 'дней'])}${when ? ` · до ${when}` : ''}`;
+  const buy = supply.packsToBuy > 0 ? `<div class="supply-buy">🛒 Совет: купите ещё <strong>${fmt(supply.packsToBuy)}</strong> ${plural(supply.packsToBuy, ['пачку', 'пачки', 'пачек'])} — запас на месяц вперёд</div>` : '';
+  return `<article class="supply-card card"><div class="supply-head"><span class="stat-icon">📦</span><div><span class="stat-label">Запас таблеток</span><strong>${leftPacks} из ${fmt(packsTotal, 1)} пачек осталось</strong></div></div><p class="muted supply-status">${status}</p>${buy}</article>`;
 }
 
 function isInstalled() {
@@ -105,10 +124,11 @@ function renderLabs(data) {
 
 function renderSettings(data) {
   const { settings, lastBackupAt } = data;
+  const supply = data.supply || { packs: 0, packSize: 30, tabletMg: 10 };
   return `<div class="page-heading"><div><p class="eyebrow">ПОД ТВОЙ КУРС</p><h1>Настройки</h1><p class="muted">Данные остаются только на этом устройстве</p></div><span class="heading-emoji">⚙️</span></div>
     <form id="settings-form" class="settings-form">
       <section class="settings-section card"><h2>🎯 Цель курса</h2><div class="form-grid"><label class="field"><span>Вес, ${settings.units === 'lb' ? 'фунты' : 'кг'}</span><input name="weightKg" inputmode="decimal" type="number" min="0.1" step="0.1" value="${esc(settings.units === 'lb' ? (settings.weightKg * 2.20462).toFixed(1) : settings.weightKg)}" required></label><label class="field"><span>Цель, мг/кг</span><input name="targetMgPerKg" inputmode="decimal" type="number" min="1" step="1" value="${esc(settings.targetMgPerKg)}" required></label></div><div class="target-mode"><label><input type="radio" name="targetMode" value="weight" ${settings.targetMode === 'weight' ? 'checked' : ''}> Рассчитывать по весу</label><label><input type="radio" name="targetMode" value="manual" ${settings.targetMode === 'manual' ? 'checked' : ''}> Задать вручную</label></div><label class="field"><span>Целевая доза, мг</span><input name="targetMg" inputmode="decimal" type="number" min="1" step="1" value="${esc(settings.targetMg)}" required></label><p class="formula-note">Формула: <strong>${fmt(settings.weightKg, 1)} кг × ${fmt(settings.targetMgPerKg)} мг/кг = ${fmt(settings.weightKg * settings.targetMgPerKg)} мг</strong>. ${settings.targetMode === 'manual' ? 'Сейчас используется введённая вручную цель.' : 'Цель пересчитывается автоматически по весу.'}</p><label class="field"><span>Дата старта курса</span><input name="startDate" type="date" value="${esc(settings.startDate)}"></label></section>
-      <section class="settings-section card"><h2>🥑 Приём и напоминания</h2><div class="form-grid"><label class="field"><span>Порог жиров, г</span><input name="fatThreshold" inputmode="decimal" type="number" min="0" step="1" value="${esc(settings.fatThreshold)}"></label><label class="field"><span>Напоминать об анализах, недель</span><input name="labReminderWeeks" inputmode="numeric" type="number" min="1" step="1" value="${esc(settings.labReminderWeeks)}"></label></div><label class="toggle-row"><span><strong>Схема 20/40</strong><small>Предлагать чередующуюся дозу как подсказку</small></span><input type="checkbox" name="alternating" ${settings.alternating ? 'checked' : ''}><i></i></label><label class="field"><span>Единицы веса</span><select name="units"><option value="kg" ${settings.units !== 'lb' ? 'selected' : ''}>Килограммы (кг)</option><option value="lb" ${settings.units === 'lb' ? 'selected' : ''}>Фунты (lb)</option></select></label></section>
+      <section class="settings-section card"><h2>💊 Приём, напоминания и запас таблеток</h2><div class="form-grid"><label class="field"><span>Порог жиров, г</span><input name="fatThreshold" inputmode="decimal" type="number" min="0" step="1" value="${esc(settings.fatThreshold)}"></label><label class="field"><span>Напоминать об анализах, недель</span><input name="labReminderWeeks" inputmode="numeric" type="number" min="1" step="1" value="${esc(settings.labReminderWeeks)}"></label></div><label class="toggle-row"><span><strong>Схема 20/40</strong><small>Предлагать чередующуюся дозу как подсказку</small></span><input type="checkbox" name="alternating" ${settings.alternating ? 'checked' : ''}><i></i></label><div class="form-grid"><label class="field"><span>Пачек куплено</span><input name="packs" inputmode="numeric" type="number" min="0" step="1" value="${esc(supply.packs)}"></label><label class="field"><span>Таблеток в пачке</span><input name="packSize" inputmode="numeric" type="number" min="1" step="1" value="${esc(supply.packSize)}"></label><label class="field"><span>мг в таблетке</span><input name="tabletMg" inputmode="numeric" type="number" min="1" step="1" value="${esc(supply.tabletMg)}"></label></div><p class="formula-note">Обычно 30 таблеток по 10 мг — это <strong>${fmt(supply.packSize * supply.tabletMg)} мг</strong> запаса на пачку.</p><label class="field"><span>Единицы веса</span><select name="units"><option value="kg" ${settings.units !== 'lb' ? 'selected' : ''}>Килограммы (кг)</option><option value="lb" ${settings.units === 'lb' ? 'selected' : ''}>Фунты (lb)</option></select></label></section>
       <button class="primary-button" type="submit">Сохранить настройки</button>
     </form>
     <section class="settings-section card data-section"><h2>🔐 Данные и резервная копия</h2><p class="muted">Экспортируйте JSON раз в неделю. Файл содержит персональные записи — храните его безопасно.</p><p class="backup-status">${lastBackupAt ? `Последняя отметка бэкапа: ${dateLabel(new Date(lastBackupAt))}` : 'Резервные копии ещё не создавались'}</p><div class="button-row"><button class="secondary-button" data-action="export">Экспорт JSON</button><button class="secondary-button" data-action="import">Импорт JSON</button></div><input id="import-file" type="file" accept="application/json,.json" hidden><button class="danger-button" data-action="clear-data">Удалить все данные</button></section>

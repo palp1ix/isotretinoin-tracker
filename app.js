@@ -168,7 +168,10 @@ function saveSettings(form) {
   const targetMgPerKg = finiteInput(form, 'targetMgPerKg', { min: 1 });
   const fatThreshold = finiteInput(form, 'fatThreshold', { min: 0 });
   const labReminderWeeks = finiteInput(form, 'labReminderWeeks', { min: 1 });
-  const mode = form.elements.namedItem('targetMode').value;
+  const packs = finiteInput(form, 'packs', { min: 0, required: false }) ?? data.supply?.packs ?? 0;
+  const packSize = finiteInput(form, 'packSize', { min: 1 }) ?? 30;
+  const tabletMg = finiteInput(form, 'tabletMg', { min: 1 }) ?? 10;
+    const mode = form.elements.namedItem('targetMode').value;
   const manualTarget = finiteInput(form, 'targetMg', { min: 1 });
   if ([weightKg, targetMgPerKg, fatThreshold, labReminderWeeks, manualTarget].some((value) => value === null)) return;
   data.settings = {
@@ -178,6 +181,7 @@ function saveSettings(form) {
     fatThreshold, labReminderWeeks, alternating: form.elements.namedItem('alternating').checked,
     units
   };
+  data.supply = { ...(data.supply || { packSize: 30, tabletMg: 10 }), packs, packSize, tabletMg };
   persist('Настройки сохранены');
   refresh();
 }
