@@ -384,7 +384,7 @@ document.addEventListener('touchend', (event) => {
 
 // First visit: cache the static shell for offline use. No network calls beyond same-origin app files.
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch((error) => console.warn('Service worker не зарегистрирован:', error)));
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch((error) => console.warn('Service worker не зарегистрирован:', error)));
 }
 
 runCalculationTests();
