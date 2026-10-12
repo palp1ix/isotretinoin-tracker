@@ -1,23 +1,34 @@
-import { loadData, saveData, parseImport, createDefaultData } from './storage.js';
-import { totalDose, dosesOnDate, milestoneCrossed, alternatingSuggestion, runCalculationTests } from './calculations.js';
-import { renderApp, doseSheet, labSheet, animateProgress, showMilestone } from './ui.js';
-import { savePdf, getPdf, deletePdf, clearPdfs, pdfToBase64, pdfFromBase64 } from './attachments.js';
+import { loadData, saveData, parseImport, createDefaultData, hasStorageReadError, clearRecoveryBackup } from './storage.js?v=5.0.0';
+import { totalDose, dosesOnDate, milestoneCrossed, alternatingSuggestion } from './calculations.js?v=5.0.0';
+import { renderApp, doseSheet, labSheet, showMilestone } from './ui.js?v=5.0.0';
+import { savePdf, getPdf, deletePdf, clearPdfs, pdfToBase64, pdfFromBase64 } from './attachments.js?v=5.0.0';
 
 let data = loadData();
+let savedData = structuredClone(data);
 let activeTab = 'today';
 const view = document.getElementById('view');
 const overlay = document.getElementById('overlay-root');
 const toastNode = document.getElementById('toast');
 let toastTimer;
+let sheetTrigger;
 
 function persist(message = '') {
-  if (!saveData(data)) toast('Не удалось сохранить. Проверьте свободное место на устройстве.');
-  else if (message) toast(message);
+  if (!saveData(data)) {
+    data = structuredClone(savedData);
+    toast('Не удалось сохранить. Записи не изменены. Проверьте хранилище устройства.');
+    return false;
+  }
+  savedData = structuredClone(data);
+  if (message) toast(message);
+  return true;
 }
 
 function refresh() {
+  if (updatePending && !overlay.querySelector('form') && activeTab !== 'settings') {
+    reloading = true; location.reload(); return;
+  }
   renderApp(view, data, activeTab);
-  if (activeTab === 'today') animateProgress();
+  if (hasStorageReadError()) view.insertAdjacentHTML('afterbegin', '<div class="reminder-banner" role="alert">Не удалось прочитать записи. Сохранение заблокировано, чтобы не перезаписать ваши данные. Закройте приложение и откройте снова; не удаляйте его и не очищайте данные браузера.</div>');
 }
 
 function toast(message) {
@@ -36,6 +47,7 @@ function id() {
 }
 
 function openDose(entry = null) {
+  sheetTrigger = document.activeElement;
   overlay.innerHTML = doseSheet(entry, data.settings, alternatingSuggestion(data.doses));
   document.body.classList.add('sheet-open');
   requestAnimationFrame(() => overlay.querySelector('.bottom-sheet')?.classList.add('visible'));
@@ -44,6 +56,7 @@ function openDose(entry = null) {
 }
 
 function openLab() {
+  sheetTrigger = document.activeElement;
   overlay.innerHTML = labSheet();
   document.body.classList.add('sheet-open');
   requestAnimationFrame(() => overlay.querySelector('.bottom-sheet')?.classList.add('visible'));
@@ -70,6 +83,7 @@ async function openLabPdf(fileId) {
 function closeSheet() {
   document.body.classList.remove('sheet-open');
   overlay.innerHTML = '';
+  if (sheetTrigger?.isConnected) sheetTrigger.focus({ preventScroll: true });
 }
 
 function updateFatWarning() {
@@ -115,7 +129,7 @@ function saveDose(form) {
   else data.doses.push(candidate);
   data.doses.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   const mark = milestoneCrossed(oldTotal, totalDose(data.doses), Number(data.settings.targetMg));
-  persist(editing ? 'Изменения сохранены' : 'Приём записан');
+  if (!persist(editing ? 'Изменения сохранены' : 'Приём записан')) return;
   haptic();
   closeSheet();
   refresh();
@@ -155,7 +169,10 @@ async function saveLab(form) {
   }
   data.labs.push(entry);
   data.labs.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-  persist('Анализ сохранён');
+  if (!persist('Анализ сохранён')) {
+    if (entry.attachment) await deletePdf(entry.attachment.id).catch(() => {});
+    return;
+  }
   closeSheet();
   refresh();
 }
@@ -168,12 +185,12 @@ function saveSettings(form) {
   const targetMgPerKg = finiteInput(form, 'targetMgPerKg', { min: 1 });
   const fatThreshold = finiteInput(form, 'fatThreshold', { min: 0 });
   const labReminderWeeks = finiteInput(form, 'labReminderWeeks', { min: 1 });
-  const packs = finiteInput(form, 'packs', { min: 0, required: false }) ?? data.supply?.packs ?? 0;
-  const packSize = finiteInput(form, 'packSize', { min: 1 }) ?? 30;
-  const tabletMg = finiteInput(form, 'tabletMg', { min: 1 }) ?? 10;
-    const mode = form.elements.namedItem('targetMode').value;
+  const packs = finiteInput(form, 'packs', { min: 0 });
+  const packSize = finiteInput(form, 'packSize', { min: 1 });
+  const tabletMg = finiteInput(form, 'tabletMg', { min: 1 });
+  const mode = form.elements.namedItem('targetMode').value;
   const manualTarget = finiteInput(form, 'targetMg', { min: 1 });
-  if ([weightKg, targetMgPerKg, fatThreshold, labReminderWeeks, manualTarget].some((value) => value === null)) return;
+  if ([weightKg, targetMgPerKg, fatThreshold, labReminderWeeks, manualTarget, packs, packSize, tabletMg].some((value) => value === null)) return;
   data.settings = {
     ...data.settings, weightKg, targetMgPerKg, targetMode: mode,
     targetMg: mode === 'weight' ? Math.round(weightKg * targetMgPerKg) : manualTarget,
@@ -182,7 +199,7 @@ function saveSettings(form) {
     units
   };
   data.supply = { ...(data.supply || { packSize: 30, tabletMg: 10 }), packs, packSize, tabletMg };
-  persist('Настройки сохранены');
+  if (!persist('Настройки сохранены')) return;
   refresh();
 }
 
@@ -200,8 +217,6 @@ async function exportData() {
     return;
   }
   const exported = { ...data, labs: labsWithPdf, lastBackupAt: new Date().toISOString() };
-  data.lastBackupAt = exported.lastBackupAt;
-  persist();
   const blob = new Blob([JSON.stringify(exported, null, 2)], { type: 'application/json' });
   const file = new File([blob], `moj-kurs-backup-${new Date().toLocaleDateString('sv-SE')}.json`, { type: 'application/json' });
   try {
@@ -216,6 +231,8 @@ async function exportData() {
       URL.revokeObjectURL(url);
       toast('Резервная копия скачана');
     }
+    data.lastBackupAt = exported.lastBackupAt;
+    persist();
   } catch (error) {
     if (error.name !== 'AbortError') toast('Не удалось поделиться файлом. Попробуйте экспорт ещё раз.');
   }
@@ -260,7 +277,10 @@ async function handleImport(input) {
     }
     const oldAttachmentIds = data.labs.map((lab) => lab.attachment?.id).filter(Boolean);
     data = imported;
-    persist('Данные импортированы');
+    if (!persist('Данные импортированы')) {
+      await Promise.all(newlyStoredIds.map((attachmentId) => deletePdf(attachmentId).catch(() => {})));
+      return;
+    }
     await Promise.all(oldAttachmentIds.map((attachmentId) => deletePdf(attachmentId).catch(() => {})));
     refresh();
   } catch (error) {
@@ -273,8 +293,9 @@ function clearAll() {
   if (!window.confirm('Удалить все записи, анализы и настройки? Это действие нельзя отменить.')) return;
   if (!window.confirm('Последнее подтверждение: данные будут удалены без возможности восстановления. Продолжить?')) return;
   data = createDefaultData();
+  if (!persist('Все данные удалены')) return;
+  clearRecoveryBackup();
   clearPdfs().catch((error) => console.warn('Не удалось удалить PDF-вложения:', error));
-  persist('Все данные удалены');
   activeTab = 'today';
   refresh();
 }
@@ -282,6 +303,7 @@ function clearAll() {
 document.addEventListener('click', (event) => {
   const tab = event.target.closest('[data-tab]');
   if (tab) {
+    event.preventDefault();
     activeTab = tab.dataset.tab;
     haptic();
     refresh();
@@ -302,7 +324,6 @@ document.addEventListener('click', (event) => {
   const action = actionNode.dataset.action;
   if (action === 'dismiss-install') {
     try { localStorage.setItem('install-tip-dismissed', '1'); } catch { /* dismissal is optional */ }
-    actionNode.remove();
     actionNode.closest('.install-tip')?.remove();
   } else if (action === 'open-dose') openDose();
   else if (action === 'edit-dose') {
@@ -313,9 +334,14 @@ document.addEventListener('click', (event) => {
   else if (action === 'delete-lab') {
     if (window.confirm('Удалить эту запись анализа?')) {
       const lab = data.labs.find((item) => item.id === actionNode.dataset.id);
-      if (lab?.attachment) deletePdf(lab.attachment.id).catch((error) => console.warn('Не удалось удалить PDF-вложение:', error));
       data.labs = data.labs.filter((item) => item.id !== actionNode.dataset.id);
-      persist('Запись удалена'); refresh();
+      if (persist('Запись удалена') && lab?.attachment) deletePdf(lab.attachment.id).catch(() => {});
+      refresh();
+    }
+  } else if (action === 'delete-entry') {
+    if (window.confirm('Удалить этот приём?')) {
+      data.doses = data.doses.filter((item) => item.id !== actionNode.dataset.id);
+      if (persist('Приём удалён')) { closeSheet(); refresh(); }
     }
   } else if (action === 'open-lab-pdf') openLabPdf(actionNode.dataset.fileId);
   else if (action === 'export') exportData();
@@ -327,6 +353,16 @@ document.addEventListener('click', (event) => {
       persist('Приём удалён'); refresh();
     }
   }
+});
+
+document.addEventListener('keydown', (event) => {
+  if (!overlay.querySelector('[role=dialog]')) return;
+  if (event.key === 'Escape') closeSheet();
+  if (event.key !== 'Tab') return;
+  const fields = [...overlay.querySelectorAll('button, input, textarea, select, summary, a[href]')].filter((node) => !node.disabled && node.getClientRects().length);
+  const first = fields[0], last = fields.at(-1);
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
 });
 
 document.addEventListener('submit', (event) => {
@@ -382,10 +418,28 @@ document.addEventListener('touchend', (event) => {
   else if (dx > 45 && Math.abs(dx) > Math.abs(dy)) row.classList.remove('revealed');
 }, { passive: true });
 
-// First visit: cache the static shell for offline use. No network calls beyond same-origin app files.
+// Keep the installed application's origin, scope and user storage unchanged.
+let updatePending = false;
+let reloading = false;
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).catch((error) => console.warn('Service worker не зарегистрирован:', error)));
+  const wasControlled = Boolean(navigator.serviceWorker.controller);
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!wasControlled || reloading) return;
+    // Do not discard a form that the user is currently filling in.
+    if (overlay.querySelector('form') || document.querySelector('#settings-form')) {
+      updatePending = true;
+      toast('Обновление готово. Сохраните изменения и откройте другой раздел.');
+    } else { reloading = true; location.reload(); }
+  });
+  window.addEventListener('load', async () => {
+    try {
+      const registration = await navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' });
+      registration.update().catch(() => {});
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') registration.update().catch(() => {});
+      });
+    } catch (error) { console.warn('Service worker не зарегистрирован:', error); }
+  });
 }
 
-runCalculationTests();
 refresh();

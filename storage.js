@@ -1,4 +1,8 @@
 const STORAGE_KEY = 'my-course-data-v1';
+const PRE_UPDATE_KEY = 'my-course-data-before-v5';
+let storageReadFailed = false;
+
+export function hasStorageReadError() { return storageReadFailed; }
 
 export function createDefaultData() {
   return {
@@ -75,15 +79,21 @@ function validTimestamp(value) {
 export function loadData() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
+    storageReadFailed = false;
     return raw ? sanitizeData(JSON.parse(raw)) : createDefaultData();
   } catch (error) {
+    storageReadFailed = true;
     console.error('Не удалось прочитать локальные данные:', error);
     return createDefaultData();
   }
 }
 
 export function saveData(data) {
+  if (storageReadFailed) return false;
   try {
+    // Preserve the exact original JSON before the first v5 write. Never rename the main key.
+    const original = localStorage.getItem(STORAGE_KEY);
+    if (original && !localStorage.getItem(PRE_UPDATE_KEY)) localStorage.setItem(PRE_UPDATE_KEY, original);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     return true;
   } catch (error) {
@@ -94,4 +104,10 @@ export function saveData(data) {
 
 export function parseImport(text) {
   return sanitizeData(JSON.parse(text));
+}
+
+// Called only after the existing two confirmations for deleting all user data.
+export function clearRecoveryBackup() {
+  try { localStorage.removeItem(PRE_UPDATE_KEY); }
+  catch (error) { console.error('Не удалось удалить страховочную копию:', error); }
 }

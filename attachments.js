@@ -25,7 +25,8 @@ async function runRequest(mode, callback) {
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(STORE_NAME, mode);
     const request = callback(transaction.objectStore(STORE_NAME));
-    request.onsuccess = () => resolve(request.result);
+    // A successful request can still be rolled back; report success only after commit.
+    transaction.oncomplete = () => resolve(request.result);
     request.onerror = () => reject(request.error || new Error('Не удалось обработать PDF-файл.'));
     transaction.onabort = () => reject(transaction.error || new Error('Операция с PDF была отменена.'));
   });

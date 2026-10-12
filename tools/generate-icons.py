@@ -16,35 +16,20 @@ def png_chunk(kind, data):
 
 def render(size, maskable=False):
     rows = []
-    margin = 0.15 if maskable else 0.0
-    pill_scale = size * (0.42 if maskable else 0.48)
-    cx = cy = (size - 1) / 2
-    angle = -math.pi / 4
-    ca, sa = math.cos(angle), math.sin(angle)
-    radius = size * (0.5 - margin)
     for y in range(size):
         row = bytearray([0])
         for x in range(size):
-            t = (x + y) / max(1, 2 * (size - 1))
-            color = [int(244 * (1-t) + 188*t), int(182 * (1-t) + 167*t), int(159 * (1-t) + 232*t)]
-            dx, dy = x - cx, y - cy
-            # Rounded-square silhouette for regular icon, circular-safe background for maskable.
-            if maskable:
-                inside = dx*dx + dy*dy <= radius*radius
-            else:
-                r = size * 0.27
-                qx, qy = abs(dx) - (size/2-r), abs(dy) - (size/2-r)
-                inside = math.hypot(max(qx, 0), max(qy, 0)) + min(max(qx, qy), 0) <= r
-            if inside:
-                u, v = dx*ca + dy*sa, -dx*sa + dy*ca
-                along = abs(u) <= pill_scale/2
-                across = abs(v) <= size*0.105
-                cap = math.hypot(max(abs(u)-pill_scale/2+size*0.105, 0), v) <= size*0.105
-                if along and across or cap:
-                    color = [255, 255, 255]
-                elif abs(u) < 1.5 and abs(v) < size*0.105:
-                    color = [221, 204, 235]
-            row.extend(color + [255 if inside else 0])
+            px, py = x / size, y / size
+            color = [32, 43, 36]
+            # Geometric M monogram; all strokes stay within the maskable safe area.
+            segments = [(0.30,0.68,0.30,0.32), (0.30,0.32,0.39,0.32),
+                        (0.39,0.32,0.50,0.51), (0.50,0.51,0.61,0.32),
+                        (0.61,0.32,0.70,0.32), (0.70,0.32,0.70,0.68)]
+            for ax, ay, bx, by in segments:
+                t = max(0, min(1, ((px-ax)*(bx-ax)+(py-ay)*(by-ay)) / ((bx-ax)**2+(by-ay)**2)))
+                if math.hypot(px-ax-t*(bx-ax), py-ay-t*(by-ay)) < 0.025:
+                    color = [214, 239, 120]
+            row.extend(color + [255])
         rows.append(bytes(row))
     raw = b''.join(rows)
     return b'\x89PNG\r\n\x1a\n' + png_chunk(b'IHDR', struct.pack('>2I5B', size, size, 8, 6, 0, 0, 0)) + png_chunk(b'IDAT', zlib.compress(raw, 9)) + png_chunk(b'IEND', b'')
