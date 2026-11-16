@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="ru">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -9,31 +10,52 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Мой курс">
   <meta name="description" content="Личный офлайн-трекер курса изотретиноина">
-  <link rel="manifest" href="./manifest.webmanifest?v=5.0.0">
-  <link rel="icon" href="./icons/icon.svg?v=5.0.0" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="./icons/icon-192.png?v=5.0.0">
-  <link rel="stylesheet" href="./style.css?v=5.0.0">
+  <link rel="manifest" href="./manifest.webmanifest?v=5.0.2">
+  <link rel="icon" href="./icons/icon.svg?v=5.0.2" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png?v=5.0.2">
+  <link rel="stylesheet" href="./style.css?v=5.0.2">
   <title>Мой курс — трекер</title>
 </head>
+
 <body>
   <div class="app-shell">
     <header class="topbar">
       <a class="brand" href="#today" data-tab="today" aria-label="Мой курс — сегодня">
-        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 40"><rect width="40" height="40" rx="2" fill="#202b24"/><path d="M12 27V13h5l3 7 3-7h5v14M12 27h5M23 27h5" fill="none" stroke="#d6ef78" stroke-width="2"/></svg></span>
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 40">
+            <rect width="40" height="40" rx="2" fill="#202b24" />
+            <path d="M12 27V13h5l3 7 3-7h5v14M12 27h5M23 27h5" fill="none" stroke="#d6ef78" stroke-width="2" />
+          </svg></span>
         <span>Мой курс</span><span class="brand-subtitle">ЛИЧНЫЙ ТРЕКЕР</span>
       </a>
       <div class="top-date" id="top-date"></div>
     </header>
     <main id="view" class="view" aria-live="polite"></main>
     <nav class="tabbar" aria-label="Основная навигация">
-      <button class="tab active" data-tab="today"><span><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 4v16h16M8 15l4-5 4 2 4-7"/></svg></span><small>Сегодня</small></button>
-      <button class="tab" data-tab="history"><span><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="4" y="5" width="16" height="15"/><path d="M8 3v4M16 3v4M4 10h16"/></svg></span><small>История</small></button>
-      <button class="tab" data-tab="labs"><span><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M9 3h6M10 3v7l-5 8a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-8V3M8 15h8"/></svg></span><small>Анализы</small></button>
-      <button class="tab" data-tab="settings"><span><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 7h16M4 17h16"/><rect x="7" y="4" width="4" height="6"/><rect x="14" y="14" width="4" height="6"/></svg></span><small>Настройки</small></button>
+      <button class="tab active" data-tab="today"><span><svg class="ui-icon" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <path d="M4 4v16h16M8 15l4-5 4 2 4-7" />
+          </svg></span><small>Сегодня</small></button>
+      <button class="tab" data-tab="history"><span><svg class="ui-icon" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <rect x="4" y="5" width="16" height="15" />
+            <path d="M8 3v4M16 3v4M4 10h16" />
+          </svg></span><small>История</small></button>
+      <button class="tab" data-tab="care"><span><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3C9 7 5 11 5 15a7 7 0 0 0 14 0c0-4-4-8-7-12Z"/></svg></span><small>Уход</small></button>
+      <button class="tab" data-tab="labs"><span><svg class="ui-icon" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <path d="M9 3h6M10 3v7l-5 8a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-8V3M8 15h8" />
+          </svg></span><small>Анализы</small></button>
+      <button class="tab" data-tab="settings"><span><svg class="ui-icon" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <path d="M4 7h16M4 17h16" />
+            <rect x="7" y="4" width="4" height="6" />
+            <rect x="14" y="14" width="4" height="6" />
+          </svg></span><small>Настройки</small></button>
     </nav>
   </div>
   <div id="overlay-root"></div>
   <div id="toast" class="toast" role="status"></div>
-  <script type="module" src="./app.js?v=5.0.0"></script>
+  <script type="module" src="./app.js?v=5.0.2"></script>
 </body>
+
 </html>

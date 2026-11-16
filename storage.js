@@ -21,6 +21,7 @@ export function createDefaultData() {
     supply: { packs: 0, packSize: 30, tabletMg: 10 },
     doses: [],
     labs: [],
+    care: { morning: [], evening: [], history: [] },
     lastBackupAt: null
   };
 }
@@ -68,7 +69,16 @@ function sanitizeData(value) {
       ...(attachment ? { attachment } : {})
     };
   }).filter((item) => item.timestamp) : [];
-  return { version: 1, settings, supply, doses, labs, lastBackupAt: validTimestamp(value.lastBackupAt) || null };
+  const careSource = value.care && typeof value.care === 'object' ? value.care : {};
+  const careItems = (items) => Array.isArray(items) ? items.filter((item) => typeof item === 'string').map((item) => item.trim().slice(0, 200)).filter(Boolean) : [];
+  const care = {
+    morning: careItems(careSource.morning), evening: careItems(careSource.evening),
+    history: Array.isArray(careSource.history) ? careSource.history.filter((item) => item && typeof item === 'object').map((item) => ({
+      id: String(item.id || makeId()), timestamp: validTimestamp(item.timestamp),
+      morning: careItems(item.morning), evening: careItems(item.evening), note: String(item.note || '').slice(0, 1000)
+    })).filter((item) => item.timestamp) : []
+  };
+  return { version: 1, settings, supply, doses, labs, care, lastBackupAt: validTimestamp(value.lastBackupAt) || null };
 }
 
 function validTimestamp(value) {

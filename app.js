@@ -1,7 +1,7 @@
-import { loadData, saveData, parseImport, createDefaultData, hasStorageReadError, clearRecoveryBackup } from './storage.js?v=5.0.0';
-import { totalDose, dosesOnDate, milestoneCrossed, alternatingSuggestion } from './calculations.js?v=5.0.0';
-import { renderApp, doseSheet, labSheet, showMilestone } from './ui.js?v=5.0.0';
-import { savePdf, getPdf, deletePdf, clearPdfs, pdfToBase64, pdfFromBase64 } from './attachments.js?v=5.0.0';
+import { loadData, saveData, parseImport, createDefaultData, hasStorageReadError, clearRecoveryBackup } from './storage.js?v=5.0.2';
+import { totalDose, dosesOnDate, milestoneCrossed, alternatingSuggestion } from './calculations.js?v=5.0.2';
+import { renderApp, doseSheet, labSheet, showMilestone } from './ui.js?v=5.0.2';
+import { savePdf, getPdf, deletePdf, clearPdfs, pdfToBase64, pdfFromBase64 } from './attachments.js?v=5.0.2';
 
 let data = loadData();
 let savedData = structuredClone(data);
@@ -28,8 +28,25 @@ function refresh() {
     reloading = true; location.reload(); return;
   }
   renderApp(view, data, activeTab);
+  showReminder();
   if (hasStorageReadError()) view.insertAdjacentHTML('afterbegin', '<div class="reminder-banner" role="alert">Не удалось прочитать записи. Сохранение заблокировано, чтобы не перезаписать ваши данные. Закройте приложение и откройте снова; не удаляйте его и не очищайте данные браузера.</div>');
 }
+
+function showReminder() {
+  document.getElementById('dose-reminder')?.remove();
+  const s = data.settings;
+  if (!s.reminderEnabled || !/^\d{4}-\d{2}-\d{2}$/.test(s.reminderStart || '') || !/^\d{2}:\d{2}$/.test(s.reminderTime || '') || !Number.isInteger(Number(s.reminderDays)) || Number(s.reminderDays) < 1) return;
+  const now = new Date();
+  const today = now.toLocaleDateString('sv-SE');
+  const dayNumber = (date) => Date.UTC(...date.split('-').map((part, i) => Number(part) - (i === 1 ? 1 : 0))) / 86400000;
+  const elapsed = dayNumber(today) - dayNumber(s.reminderStart);
+  const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  if (elapsed < 0 || elapsed % Number(s.reminderDays) || currentTime < s.reminderTime || dosesOnDate(data.doses, today).length) return;
+  view.insertAdjacentHTML('afterbegin', '<div id="dose-reminder" class="reminder-banner" role="status">Пора принять таблетки и внести запись о приёме. <button type="button" data-action="reminder-dose">Добавить запись</button></div>');
+}
+setInterval(showReminder, 30000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') showReminder(); });
+document.addEventListener('click', (event) => { if (event.target.closest('[data-action="reminder-dose"]')) openDose(); });
 
 function toast(message) {
   toastNode.textContent = message;
@@ -196,11 +213,35 @@ function saveSettings(form) {
     targetMg: mode === 'weight' ? Math.round(weightKg * targetMgPerKg) : manualTarget,
     startDate: form.elements.namedItem('startDate').value || data.settings.startDate,
     fatThreshold, labReminderWeeks, alternating: form.elements.namedItem('alternating').checked,
-    units
+    units,
+    reminderEnabled: form.elements.namedItem('reminderEnabled').checked,
+    reminderTime: form.elements.namedItem('reminderTime').value,
+    reminderDays: Number(form.elements.namedItem('reminderDays').value),
+    reminderStart: (data.settings.reminderEnabled === form.elements.namedItem('reminderEnabled').checked && data.settings.reminderTime === form.elements.namedItem('reminderTime').value && Number(data.settings.reminderDays) === Number(form.elements.namedItem('reminderDays').value)) ? data.settings.reminderStart : new Date().toLocaleDateString('sv-SE')
   };
   data.supply = { ...(data.supply || { packSize: 30, tabletMg: 10 }), packs, packSize, tabletMg };
   if (!persist('Настройки сохранены')) return;
   refresh();
+}
+
+function saveCare(form) {
+  const lines = (name) => form.elements.namedItem(name).value.split(/\r?\n/).map((line) => line.trim().slice(0, 200)).filter(Boolean);
+  const morning = lines('morning'), evening = lines('evening');
+  const note = form.elements.namedItem('note').value.trim().slice(0, 1000);
+  if (!morning.length && !evening.length && !note && !data.care.history.length) { toast('Добавьте средство или заметку'); return; }
+  data.care.morning = morning;
+  data.care.evening = evening;
+  data.care.history.push({ id: id(), timestamp: new Date().toISOString(), morning: [...morning], evening: [...evening], note });
+  if (persist('Уход сохранён')) refresh();
+}
+
+async function exportCare() {
+  const blob = new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), care: data.care }, null, 2)], { type: 'application/json' });
+  const file = new File([blob], `moy-uhod-${new Date().toLocaleDateString('sv-SE')}.json`, { type: 'application/json' });
+  try {
+    if (navigator.canShare?.({ files: [file] }) && navigator.share) await navigator.share({ title: 'Мой уход и история', files: [file] });
+    else { const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = file.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); toast('Уход экспортирован'); }
+  } catch (error) { if (error.name !== 'AbortError') toast('Не удалось экспортировать уход.'); }
 }
 
 async function exportData() {
@@ -345,6 +386,7 @@ document.addEventListener('click', (event) => {
     }
   } else if (action === 'open-lab-pdf') openLabPdf(actionNode.dataset.fileId);
   else if (action === 'export') exportData();
+  else if (action === 'export-care') exportCare();
   else if (action === 'import') importFile();
   else if (action === 'clear-data') clearAll();
   else if (action === 'delete-dose') {
@@ -366,6 +408,7 @@ document.addEventListener('keydown', (event) => {
 });
 
 document.addEventListener('submit', (event) => {
+  if (event.target.id === 'care-form') { event.preventDefault(); saveCare(event.target); }
   if (event.target.id === 'dose-form') { event.preventDefault(); saveDose(event.target); }
   if (event.target.id === 'lab-form') { event.preventDefault(); saveLab(event.target); }
   if (event.target.id === 'settings-form') { event.preventDefault(); saveSettings(event.target); }
@@ -426,7 +469,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!wasControlled || reloading) return;
     // Do not discard a form that the user is currently filling in.
-    if (overlay.querySelector('form') || document.querySelector('#settings-form')) {
+    if (overlay.querySelector('form') || document.querySelector('#settings-form, #care-form')) {
       updatePending = true;
       toast('Обновление готово. Сохраните изменения и откройте другой раздел.');
     } else { reloading = true; location.reload(); }

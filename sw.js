@@ -1,6 +1,6 @@
-// Application release 5.0.0. Cache version is independent of the user's data format.
-const CACHE_VERSION = 'isotretinoin-v5.0.0';
-const RELEASE = '5.0.0';
+// Application release 5.0.2. Cache version is independent of the user's data format.
+const CACHE_VERSION = 'isotretinoin-v5.0.2';
+const RELEASE = '5.0.2';
 const FILES = ['style.css', 'app.js', 'storage.js', 'calculations.js', 'ui.js', 'attachments.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png'];
 const APP_SHELL = [
   './', './index.html', ...FILES.map((file) => `./${file}?v=${RELEASE}`),
